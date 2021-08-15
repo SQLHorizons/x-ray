@@ -1,0 +1,4 @@
+*password
+*.key
+rabbitmq.conf
+rabbitmq-erlang-cookie

@@ -1,0 +1,27 @@
+---
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: aws-hosted-db
+  namespace: x-ray
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/instance: xraydb
+
+spec:
+
+  ports:
+
+    - name: epdb
+      port: 5432
+      protocol: TCP
+      targetPort: 5432
+
+  selector:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/instance: xraydb
+
+  clusterIP: None  ##  <-- Don't forget, it's headless!!

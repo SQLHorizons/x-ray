@@ -1,0 +1,8 @@
+ID, Source Component, Destination Component, Protocol, Ports* (if known at this stage), Encryption in transit (yes/no), Authentication Mechanism, Describe the traffic flow
+i-1,Aviva Internal Admins,Artifactory Web UI,HTTPS,443,Yes,Windows authentication,uni-directional
+i-2,Artifactory Router Service,x-ray Router Service,TCP,8082,Yes,Internal Application,uni-directional
+i-3,x-ray Router Service,rabbitmq,TCP,5672,Yes,Basic Authentication,uni-directional
+i-4,rabbitmq,rabbitmq,TCP,25672,Yes,Internal Application,uni-directional
+i-5a,x-ray Application (pod),RDS PostgreSQL Primary,TCP,5432,Yes,database authentication,uni-directional
+i-5b,RDS PostgreSQL Primary,RDS PostgreSQL Secondary,TCP,5432,Yes,database authentication,uni-directional
+i-6,Aqua-Enforcer,ECR,HTTPS,443,Yes,IAM Instance Profile,uni-directional

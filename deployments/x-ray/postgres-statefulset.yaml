@@ -1,0 +1,135 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+
+metadata:
+  name: xray-db-postgresql
+  namespace: x-ray
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/instance: xraydb
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/postgresql: runtime/default  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-32 ✔
+
+spec:
+  serviceName: aws-hosted-db
+  replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres  ##  has to match .spec.template.metadata.labels.
+      app.kubernetes.io/component: database
+      app.kubernetes.io/instance: xraydb
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres  ##  has to match .spec.selector.matchLabels.
+        app.kubernetes.io/component: database
+        app.kubernetes.io/instance: xraydb
+
+    spec:
+
+      terminationGracePeriodSeconds: 30
+
+      securityContext:
+        runAsUser: 1001
+        fsGroup: 1001
+
+      volumes:
+
+      - name: dshm
+        emptyDir:
+          medium: Memory
+
+      containers:
+
+      - name: postgresql
+        image: binaries.avivagroup.com/technicalservices-tools-docker-vendor-local/bitnami/postgresql:13.4.0-debian-10-r6
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:                    ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-6 ✔
+            drop:
+              - all
+          readOnlyRootFilesystem: false    ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-8 ✘
+          allowPrivilegeEscalation: false  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-9 ✔
+          runAsNonRoot: true               ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-10 ✔
+
+        envFrom:
+        - configMapRef:
+            name: postgres-env-variables
+
+        env:
+
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: xray-db-credentials
+
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - exec pg_isready -U "postgres" -d "dbname=xraydb" -h 127.0.0.1 -p
+              5432
+          failureThreshold: 6
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+
+        ports:
+        - containerPort: 5432
+          name: tcp-postgresql
+          protocol: TCP
+
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - -e
+            - |
+              exec pg_isready -U "postgres" -d "dbname=xraydb" -h 127.0.0.1 -p 5432
+              [ -f /opt/bitnami/postgresql/tmp/.initialized ] || [ -f /bitnami/postgresql/.initialized ]
+          failureThreshold: 6
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 500Mi
+
+        volumeMounts:
+
+        - name: data
+          mountPath: /bitnami/postgresql
+
+        - name: dshm
+          mountPath: /dev/shm
+
+  volumeClaimTemplates:
+
+  - metadata:
+      name: data
+      labels:
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/component: database
+        app.kubernetes.io/instance: xraydb
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: gp2
+      resources:
+        requests:
+          storage: 1Gi

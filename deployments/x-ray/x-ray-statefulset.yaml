@@ -1,0 +1,694 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+
+metadata:
+  name: x-ray
+  namespace: x-ray
+  labels:
+    app.kubernetes.io/name: x-ray
+    app.kubernetes.io/component: x-ray
+    app.kubernetes.io/instance: x-ray
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/router: runtime/default  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-32 ✔
+    container.apparmor.security.beta.kubernetes.io/xray-server: runtime/default  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-32 ✔
+    container.apparmor.security.beta.kubernetes.io/xray-analysis: runtime/default  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-32 ✔
+    container.apparmor.security.beta.kubernetes.io/xray-indexer: runtime/default  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-32 ✔
+    container.apparmor.security.beta.kubernetes.io/xray-persist: runtime/default  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-32 ✔
+    container.apparmor.security.beta.kubernetes.io/copy-system-yaml: runtime/default  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-32 ✔
+    container.apparmor.security.beta.kubernetes.io/wait-for-db: runtime/default  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-32 ✔
+    container.apparmor.security.beta.kubernetes.io/wait-for-rabbit: runtime/default  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-32 ✔
+
+spec:
+  serviceName: x-ray-service  ##  dependency: create x-ray-service ✔
+  replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: x-ray  ##  has to match .spec.template.metadata.labels.
+      app.kubernetes.io/component: x-ray
+      app.kubernetes.io/instance: x-ray
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: x-ray  ##  has to match .spec.selector.matchLabels.
+        app.kubernetes.io/component: x-ray
+        app.kubernetes.io/instance: x-ray
+
+    spec:
+      serviceAccountName: x-ray  ##  dependency: create x-ray serviceaccount ✔
+      terminationGracePeriodSeconds: 30
+
+      securityContext:
+        runAsUser: 1035
+        fsGroup: 1035
+      volumes:
+
+      - name: systemyaml  ##  dependency: create x-ray-system-yaml secret ✔
+        secret:
+          secretName: x-ray-system-yaml
+
+
+
+
+
+
+      containers:
+
+      - name: router
+        image: releases-docker.jfrog.io/jfrog/router:7.21.3
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:                    ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-6 ✔
+            drop:
+              - all
+          readOnlyRootFilesystem: false    ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-8 ✘
+          allowPrivilegeEscalation: false  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-9 ✔
+          runAsNonRoot: true               ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-10 ✔
+
+        command:
+        - /bin/sh
+        - -c
+        - |
+          sleep 10; /opt/jfrog/router/app/bin/entrypoint-router.sh;
+
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /router/api/v1/system/health
+            port: 8082
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        ports:  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-36 ✔
+        - containerPort: 8082
+          name: http-router
+          protocol: TCP
+
+        readinessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /router/api/v1/system/health
+            port: 8082
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        resources: {}
+          # requests:
+          #   memory: 128Mi
+          #   cpu: 100m
+          # limits:
+          #   memory: 1Gi  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-4
+          #   cpu: "1"     ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-5
+
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /router/api/v1/system/health
+            port: 8082
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        volumeMounts:
+
+        - name: data-volume
+          mountPath: /var/opt/jfrog/router
+
+      - name: xray-server
+        image: releases-docker.jfrog.io/jfrog/xray-server:3.29.2
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:                    ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-6 ✔
+            drop:
+              - all
+          readOnlyRootFilesystem: true     ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-8 ✔
+          allowPrivilegeEscalation: false  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-9 ✔
+          runAsNonRoot: true               ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-10 ✔
+
+        command:
+        - /bin/bash
+        - -c
+        - |
+          exec /opt/jfrog/xray/app/bin/wrapper.sh;
+
+        env:
+
+        - name: JF_SHARED_DATABASE_USERNAME  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: xray-db-credentials
+
+        - name: JF_SHARED_DATABASE_PASSWORD  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: xray-db-credentials
+
+        - name: JF_SHARED_DATABASE_URL  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: url
+              name: xray-db-credentials
+
+        - name: JF_SHARED_RABBITMQ_USERNAME  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: rabbitmq-app-credentials
+
+        - name: JF_SHARED_RABBITMQ_URL  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: url
+              name: rabbitmq-app-credentials
+
+        - name: JF_SHARED_RABBITMQ_PASSWORD  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: rabbitmq-password
+              name: rabbitmq-app-credentials
+
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/v1/system/ping
+            port: 8000
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        ports:  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-36 ✔
+        - containerPort: 8000
+          name: http-server
+          protocol: TCP
+
+        readinessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /api/v1/system/ping
+            port: 8000
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        resources: {}
+
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /api/v1/system/ping
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 90
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        volumeMounts:
+
+        - name: data-volume
+          mountPath: /var/opt/jfrog/xray
+
+      - name: xray-analysis
+        image: releases-docker.jfrog.io/jfrog/xray-analysis:3.29.2
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:                    ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-6 ✔
+            drop:
+              - all
+          readOnlyRootFilesystem: true     ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-8 ✔
+          allowPrivilegeEscalation: false  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-9 ✔
+          runAsNonRoot: true               ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-10 ✔
+
+        command:
+        - /bin/bash
+        - -c
+        - |
+          exec /opt/jfrog/xray/app/bin/wrapper.sh;
+
+        env:
+
+        - name: JF_SHARED_DATABASE_USERNAME  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: xray-db-credentials
+
+        - name: JF_SHARED_DATABASE_PASSWORD  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: xray-db-credentials
+
+        - name: JF_SHARED_DATABASE_URL  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: url
+              name: xray-db-credentials
+
+        - name: JF_SHARED_RABBITMQ_USERNAME  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: rabbitmq-app-credentials
+
+        - name: JF_SHARED_RABBITMQ_URL  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: url
+              name: rabbitmq-app-credentials
+
+        - name: JF_SHARED_RABBITMQ_PASSWORD  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: rabbitmq-password
+              name: rabbitmq-app-credentials
+
+        - name: XRAY_HA_NODE_ID
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+
+        - name: XRAY_K8S_ENV
+          value: "true"
+
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/v1/system/ping
+            port: 7000
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        ports:  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-36 ✔
+        - containerPort: 7000
+          name: http-analysis
+          protocol: TCP
+
+        readinessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /api/v1/system/ping
+            port: 7000
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        resources: {}
+
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /api/v1/system/ping
+            port: 7000
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        volumeMounts:
+
+        - name: data-volume
+          mountPath: /var/opt/jfrog/xray
+
+      - name: xray-indexer
+        image: releases-docker.jfrog.io/jfrog/xray-indexer:3.29.2
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:                    ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-6 ✔
+            drop:
+              - all
+          readOnlyRootFilesystem: true     ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-8 ✔
+          allowPrivilegeEscalation: false  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-9 ✔
+          runAsNonRoot: true               ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-10 ✔
+
+        command:
+        - /bin/bash
+        - -c
+        - |
+          exec /opt/jfrog/xray/app/bin/wrapper.sh;
+
+        env:
+
+        - name: JF_SHARED_DATABASE_USERNAME  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: xray-db-credentials
+
+        - name: JF_SHARED_DATABASE_PASSWORD  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: xray-db-credentials
+
+        - name: JF_SHARED_DATABASE_URL  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: url
+              name: xray-db-credentials
+
+        - name: JF_SHARED_RABBITMQ_USERNAME  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: rabbitmq-app-credentials
+
+        - name: JF_SHARED_RABBITMQ_URL  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: url
+              name: rabbitmq-app-credentials
+
+        - name: JF_SHARED_RABBITMQ_PASSWORD  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: rabbitmq-password
+              name: rabbitmq-app-credentials
+
+        - name: XRAY_HA_NODE_ID
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+
+        - name: XRAY_K8S_ENV
+          value: "true"
+
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/v1/system/ping
+            port: 7002
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        ports:  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-36 ✔
+        - containerPort: 7002
+          name: http-indexer
+          protocol: TCP
+
+        readinessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /api/v1/system/ping
+            port: 7002
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        resources: {}
+
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /api/v1/system/ping
+            port: 7002
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        volumeMounts:
+
+        - name: data-volume
+          mountPath: /var/opt/jfrog/xray
+
+      - name: xray-persist
+        image: releases-docker.jfrog.io/jfrog/xray-persist:3.29.2
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:                    ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-6 ✔
+            drop:
+              - all
+          readOnlyRootFilesystem: true     ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-8 ✔
+          allowPrivilegeEscalation: false  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-9 ✔
+          runAsNonRoot: true               ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-10 ✔
+
+        command:
+        - /bin/bash
+        - -c
+        - |
+          exec /opt/jfrog/xray/app/bin/wrapper.sh;
+
+        env:
+
+        - name: JF_SHARED_DATABASE_USERNAME  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: xray-db-credentials
+
+        - name: JF_SHARED_DATABASE_PASSWORD  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: xray-db-credentials
+
+        - name: JF_SHARED_DATABASE_URL  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: url
+              name: xray-db-credentials
+
+        - name: JF_SHARED_RABBITMQ_USERNAME  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: rabbitmq-app-credentials
+
+        - name: JF_SHARED_RABBITMQ_URL  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: url
+              name: rabbitmq-app-credentials
+
+        - name: JF_SHARED_RABBITMQ_PASSWORD  ##  dependency: create xray-db-credentials secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: rabbitmq-password
+              name: rabbitmq-app-credentials
+
+        - name: XRAY_K8S_ENV
+          value: "true"
+
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/v1/system/ping
+            port: 7003
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        ports:  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-36 ✔
+        - containerPort: 7003
+          name: http-persist
+          protocol: TCP
+
+        readinessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /api/v1/system/ping
+            port: 7003
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        resources: {}
+
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /api/v1/system/ping
+            port: 7003
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        volumeMounts:
+
+        - name: data-volume
+          mountPath: /var/opt/jfrog/xray
+
+      initContainers:
+
+      - name: copy-system-yaml
+        image: alpine:3.14.1
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:                    ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-6 ✔
+            drop:
+              - all
+          readOnlyRootFilesystem: true     ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-8 ✔
+          allowPrivilegeEscalation: false  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-9 ✔
+          runAsNonRoot: true               ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-10 ✔
+
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Copy system.yaml to /var/opt/jfrog/xray/etc";
+          mkdir -p /var/opt/jfrog/xray/etc;
+          cp -fv /tmp/etc/system.yaml /var/opt/jfrog/xray/etc/system.yaml;
+          echo "Remove /var/opt/jfrog/xray/lost+found folder if exists";
+          rm -rfv /var/opt/jfrog/xray/lost+found;
+          echo "Copy joinKey to /var/opt/jfrog/xray/etc/security";
+          mkdir -p /var/opt/jfrog/xray/etc/security;
+          echo ${XRAY_JOIN_KEY} > /var/opt/jfrog/xray/etc/security/join.key;
+          echo "Copy masterKey to /var/opt/jfrog/xray/etc/security";
+          mkdir -p /var/opt/jfrog/xray/etc/security;
+          echo ${XRAY_MASTER_KEY} > /var/opt/jfrog/xray/etc/security/master.key;
+
+        env:
+
+        - name: XRAY_JOIN_KEY  ##  dependency: create x-ray-keys secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: join-key
+              name: x-ray-keys
+
+        - name: XRAY_MASTER_KEY  ##  dependency: create x-ray-keys secret ✔
+          valueFrom:
+            secretKeyRef:
+              key: master-key
+              name: x-ray-keys
+
+        resources:
+          requests:
+            memory: 64Mi
+            cpu: 10m
+          limits:
+            memory: 128Mi
+            cpu: 250m
+
+        volumeMounts:
+
+        - name: data-volume
+          mountPath: /var/opt/jfrog/xray
+
+        - name: systemyaml
+          mountPath: /tmp/etc/system.yaml
+          subPath: system.yaml
+
+      - name: wait-for-db
+        image: alpine:3.14.1
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:                    ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-6 ✔
+            drop:
+              - all
+          readOnlyRootFilesystem: true     ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-8 ✔
+          allowPrivilegeEscalation: false  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-9 ✔
+          runAsNonRoot: true               ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-10 ✔
+
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z -w2 aws-hosted-db.x-ray 5432 && echo database ok; do
+            sleep 2;
+          done;
+
+        resources:
+          requests:
+            memory: 64Mi
+            cpu: 10m
+          limits:
+            memory: 128Mi
+            cpu: 250m
+
+      - name: wait-for-rabbit
+        image: alpine:3.14.1
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:                    ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-6 ✔
+            drop:
+              - all
+          readOnlyRootFilesystem: true     ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-8 ✔
+          allowPrivilegeEscalation: false  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-9 ✔
+          runAsNonRoot: true               ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-10 ✔
+
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z -w2 xray-rabbitmq.x-ray 5672 && echo rabbit is up; do
+            sleep 2;
+          done;
+
+        resources:
+          requests:
+            memory: 64Mi
+            cpu: 10m
+          limits:
+            memory: 128Mi
+            cpu: 250m
+
+      - name: wait-for-arti
+        image: alpine:3.14.1
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:                    ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-6 ✔
+            drop:
+              - all
+          readOnlyRootFilesystem: true     ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-8 ✔
+          allowPrivilegeEscalation: false  ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-9 ✔
+          runAsNonRoot: true               ##  Policy Id: https://snyk.io/security-rules/SNYK-CC-K8S-10 ✔
+
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z -w2 100.67.60.253 8082 && echo artifactory is up; do
+            sleep 2;
+          done;
+
+        resources:
+          requests:
+            memory: 64Mi
+            cpu: 10m
+          limits:
+            memory: 128Mi
+            cpu: 250m
+
+  volumeClaimTemplates:
+
+  - metadata:
+      name: data-volume
+      labels:
+        app.kubernetes.io/name: x-ray
+        app.kubernetes.io/component: x-ray
+        app.kubernetes.io/instance: x-ray
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: default
+      resources:
+        requests:
+          storage: 1Gi

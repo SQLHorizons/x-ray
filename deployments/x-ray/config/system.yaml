@@ -1,0 +1,19 @@
+configVersion: 1
+router:
+    topology:
+        local:
+            requiredServiceTypes: 'jfxr,jfxana,jfxidx,jfxpst'
+shared:
+    logging:
+        consoleLog:
+            enabled: false
+    jfrogUrl: "http://100.67.60.253:8082/"
+    database:
+        type: postgresql
+        driver: org.postgresql.Driver
+    rabbitMq:
+        erlangCookie:
+            value: ""
+server:
+    mailServer: ""
+    indexAllBuilds: ""

@@ -1,0 +1,29 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: x-ray
+  namespace: x-ray
+
+spec:
+
+  egress:
+
+  ##  allow api-server
+  - to:
+    - ipBlock:
+        cidr: 10.63.242.166/32
+    ports:
+    - protocol: TCP
+      port: 443
+
+  ##  rules applied to
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: x-ray
+      app.kubernetes.io/component: x-ray
+      app.kubernetes.io/instance: x-ray
+
+  policyTypes:
+  - Ingress
+  - Egress

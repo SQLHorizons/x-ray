@@ -1,0 +1,86 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+generatorOptions:
+  labels:
+    app.kubernetes.io/instance: x-ray
+    app.kubernetes.io/name: x-ray
+  disableNameSuffixHash: false
+
+secretGenerator:
+
+  ##  Load Definitions - https://www.rabbitmq.com/management.html#load-definitions
+  ##  Reference : https://github.com/bitnami/charts/tree/master/bitnami/rabbitmq#load-custom-definitions
+
+- name: load-definition
+  namespace: x-ray
+  files:
+  - load_definition.json
+
+- name: rabbitmq-app-credentials
+  namespace: x-ray
+  literals:
+  - username=guest
+  - url=amqp://xray-rabbitmq.x-ray:5672/
+  files:
+  - rabbitmq-erlang-cookie
+  - rabbitmq-password=rabbitmq-password
+
+- name: x-ray-keys
+  namespace: x-ray
+  files:
+  - join-key=join.key
+  - master-key=master.key
+
+- name: xray-db-credentials
+  namespace: x-ray
+  literals:
+  - username=xrayuser
+  - url=postgres://aws-hosted-db.x-ray:5432/xraydb?sslmode=disable
+  files:
+  - password=postgres-password
+
+- name: x-ray-system-yaml
+  namespace: x-ray
+  files:
+  - system.yaml
+
+- name: xray-rabbitmq-config
+  namespace: x-ray
+  files:
+  - rabbitmq.conf
+
+configMapGenerator:
+
+- name: postgres-env-variables
+  namespace: x-ray
+  literals:
+  - BITNAMI_DEBUG=false
+  - POSTGRESQL_PORT_NUMBER=5432
+  - POSTGRESQL_VOLUME_DIR=/bitnami/postgresql
+  - PGDATA=/bitnami/postgresql/data
+  - POSTGRES_USER=xrayuser
+  - POSTGRES_DB=xraydb
+  - POSTGRESQL_ENABLE_LDAP=no
+  - POSTGRESQL_ENABLE_TLS=no
+  - POSTGRESQL_LOG_HOSTNAME=false
+  - POSTGRESQL_LOG_CONNECTIONS=false
+  - POSTGRESQL_LOG_DISCONNECTIONS=false
+  - POSTGRESQL_PGAUDIT_LOG_CATALOG=off
+  - POSTGRESQL_CLIENT_MIN_MESSAGES=error
+  - POSTGRESQL_SHARED_PRELOAD_LIBRARIES=pgaudit
+
+- name: rabbitmq-env-variables
+  namespace: x-ray
+  literals:
+  - BITNAMI_DEBUG=false
+  - K8S_SERVICE_NAME=xray-rabbitmq-headless
+  - K8S_ADDRESS_TYPE=hostname
+  - RABBITMQ_FORCE_BOOT=no
+  - RABBITMQ_LDAP_ENABLE=no
+  - RABBITMQ_LOGS=-
+  - RABBITMQ_ULIMIT_NOFILES=65536
+  - RABBITMQ_USE_LONGNAME=true
+  - RABBITMQ_PLUGINS=rabbitmq_management, rabbitmq_peer_discovery_k8s, rabbitmq_auth_backend_ldap
+  - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=+S 2:2 +sbwt none +sbwtdcpu none +sbwtdio none

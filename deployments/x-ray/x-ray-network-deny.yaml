@@ -1,0 +1,33 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: x-ray-deny-all
+  namespace: x-ray
+
+spec:
+
+  egress:
+  ##  Allow outbound connections to expressed ports
+  - ports:
+    - port: 10053
+      protocol: TCP
+    - port: 10053
+      protocol: UDP
+    to:
+    ##  match to coredns pods within the kube-system namespace.
+    - namespaceSelector:
+        matchLabels:
+          ##  match to kube-system namespace.
+          name: kube-system
+      podSelector:
+        matchLabels:
+          ##  match to coredns pods with label k8s-app=kube-dns.
+          k8s-app: kube-dns
+
+  ##  rules applied to
+  podSelector: {}
+
+  policyTypes:
+  - Ingress
+  - Egress
