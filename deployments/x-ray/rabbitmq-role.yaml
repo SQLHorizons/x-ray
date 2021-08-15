@@ -1,0 +1,13 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rabbitmq-endpoint-reader
+  namespace: x-ray
+rules:
+- apiGroups: [""]
+  resources: ["endpoints"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create"]

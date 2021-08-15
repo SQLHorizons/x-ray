@@ -1,0 +1,68 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+generatorOptions:
+  labels:
+    app: x-ray
+    component: x-ray
+  disableNameSuffixHash: true
+
+secretGenerator:
+
+  ##  Load Definitions - https://www.rabbitmq.com/management.html#load-definitions
+  ##  Reference : https://github.com/bitnami/charts/tree/master/bitnami/rabbitmq#load-custom-definitions
+
+- name: load-definition
+  namespace: x-ray
+  files:
+  - load_definition.json
+
+- name: rabbitmq-app-credentials  ##  aka: xray-rabbitmq
+  namespace: x-ray
+  literals:
+  - username=guest
+  - url=amqp://xray-rabbitmq.x-ray:5672/
+  files:
+  - rabbitmq-erlang-cookie
+  - rabbitmq-password=password
+
+- name: x-ray-keys  ##  aka: xray
+  namespace: x-ray
+  files:
+  - join-key=join.key
+  - master-key=master.key
+
+- name: xray-db-credentials
+  namespace: x-ray
+  literals:
+  - username=xrayuser
+  - url=postgres://azure-hosted-db.artifactory:5432/xraydb?sslmode=disable
+  files:
+  - password
+
+- name: x-ray-system-yaml
+  namespace: x-ray
+  files:
+  - system.yaml
+
+configMapGenerator:
+
+- name: xray-rabbitmq-config
+  namespace: x-ray
+  files:
+  - rabbitmq.conf
+
+- name: rabbitmq-env-variables
+  namespace: x-ray
+  literals:
+  - BITNAMI_DEBUG=false
+  - K8S_SERVICE_NAME=xray-rabbitmq-headless
+  - K8S_ADDRESS_TYPE=hostname
+  - RABBITMQ_FORCE_BOOT=no
+  - RABBITMQ_LDAP_ENABLE=no
+  - RABBITMQ_LOGS=-
+  - RABBITMQ_ULIMIT_NOFILES=65536
+  - RABBITMQ_USE_LONGNAME=true
+  - RABBITMQ_PLUGINS=rabbitmq_management, rabbitmq_peer_discovery_k8s, rabbitmq_auth_backend_ldap
+  - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=+S 2:2 +sbwt none +sbwtdcpu none +sbwtdio none

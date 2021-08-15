@@ -1,0 +1,85 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rabbitmq
+  namespace: x-ray
+
+spec:
+
+  egress:
+  ##  allow outbound connections to expressed ports
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          ##  match to x-ray namespace.
+          name: x-ray
+
+  ##  allow api-server
+  - to:
+    - ipBlock:
+        cidr: 51.11.171.198/32
+    ports:
+    - protocol: TCP
+      port: 443
+
+  ingress:
+  ##  allow inbound connections from expressed selectors
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          ##  match to x-ray namespace.
+          name: x-ray
+
+  ##  rules applied to
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rabbitmq
+
+  policyTypes:
+  - Ingress
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: x-ray
+  namespace: x-ray
+
+spec:
+
+  egress:
+  ##  allow outbound connections to expressed ports
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          ##  match to artifactory namespace.
+          name: artifactory
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          ##  match to x-ray namespace.
+          name: x-ray
+
+  ingress:
+  ##  allow inbound connections from expressed selectors
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: artifactory
+    ##  with access on expressed ports
+
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          ##  match to x-ray namespace.
+          name: x-ray
+
+  ##  rules applied to
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: x-ray
+
+  policyTypes:
+  - Ingress
+  - Egress
