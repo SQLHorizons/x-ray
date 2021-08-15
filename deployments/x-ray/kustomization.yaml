@@ -1,0 +1,17 @@
+bases:
+ - config
+
+namespace: x-ray
+
+resources:
+ - rabbitmq-role.yaml
+ - rabbitmq-rolebinding.yaml
+ - rabbitmq-service.yaml
+ - rabbitmq-serviceaccount.yaml
+ - rabbitmq-statefulset.yaml
+ - x-ray-ns.yaml
+ - x-ray-role.yaml
+ - x-ray-rolebinding.yaml
+ - x-ray-serviceaccount.yaml
+ - x-ray-services.yaml
+ - x-ray-statefulset.yaml

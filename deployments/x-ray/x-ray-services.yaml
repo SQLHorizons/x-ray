@@ -1,0 +1,32 @@
+---
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: x-ray-service
+  namespace: x-ray
+  labels:
+    app.kubernetes.io/name: x-ray
+    app.kubernetes.io/component: x-ray
+    app.kubernetes.io/instance: x-ray
+
+spec:
+
+  ports:
+
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8000
+
+  - name: http-router
+    port: 8082
+    protocol: TCP
+    targetPort: 8082
+
+  selector:
+    app.kubernetes.io/name: x-ray
+    app.kubernetes.io/component: x-ray
+    app.kubernetes.io/instance: x-ray
+
+  type: ClusterIP
